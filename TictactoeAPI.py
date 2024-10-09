@@ -19,5 +19,3 @@ def get_items():
     return  jsonify({"move":f"{move}"}),200
 
 
-if __name__ == "__main__":
-    app.run(debug=True)
