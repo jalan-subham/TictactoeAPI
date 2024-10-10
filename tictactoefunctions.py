@@ -1,35 +1,13 @@
 import numpy as np 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn.functional import  softmax
 import tictactoe_data
-from torch import tensor
+import onnxruntime
 
-
-FILE_PATH = "tictactoeVerTestPercentage0DNN_[1584, 720, 360, 216, 180, 108, 72, 36, 16]_100Batch_epoch1000_0.001_model_state_dict.pth"
 ROUND = 3
 
-
-class NeuralNet(nn.Module):
-    def __init__(self,input_dim, outputDim, units_per_layer):
-        super(NeuralNet, self).__init__()
-        self.Layers = nn.ModuleList()
-        self.Layers.append(nn.Linear(input_dim, units_per_layer[0]))
-        for r in range(1,len(units_per_layer)):
-            self.Layers.append(nn.Linear(units_per_layer[r-1], units_per_layer[r]))
-        self.Layers.append(nn.Linear(units_per_layer[-1], outputDim))
-        self.Dropout1 = torch.nn.Dropout(p=0.5)
-
-
-    def forward(self, x):
-        for r in range(len(self.Layers)-1):
-            if not 0:
-                x = self.Dropout1(F.relu(self.Layers[r](x)))
-            else:
-                x = (F.relu(self.Layers[r](x)))
-        x = self.Layers[-1](x)
-        return x
+def softmax(x):
+    """Compute softmax values for each sets of scores in x."""
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum()
 
 def resolveMinLoss(losslist,winlist):
     print("------RESOLVE MIN LOSS--------")
@@ -55,42 +33,35 @@ def getMovePosition(board1,board2):
 # Runs the forward passs and makes the move with the highest 'Sure win'
 def computer_move(board,firstmove):
 
-    layer_list = [1584, 720, 360, 216, 180, 108, 72, 36, 16]
-
-    model = NeuralNet(9,4, layer_list)
-    model.load_state_dict(torch.load(FILE_PATH))
-    model.eval()
-
-
+    session = onnxruntime.InferenceSession("inferenceModel.onnx")
+    input_name = session.get_inputs()[0].name
+    
     board_ = np.array(board)
     possible_moves = tictactoe_data.add_move(board_, 1, [], True)
     move_probs_win = []
     move_probs_loss = []
     move_probs_tie = []
     move_probs_dk = []
-    r = torch.from_numpy(np.array(board_).reshape(9))
-    r = r.type(torch.float32)
-    with torch.no_grad():
-        model.eval()
-        # prob = softmax(model.forward(r))
-        currentsituation = softmax(model.forward(r))
+
+    outputs = session.run(None, {input_name: [board_.reshape(9).tolist()]})
+
+    currentsituation = softmax(outputs[0][0])
 
 
     for r in possible_moves:
-        r = torch.from_numpy(r.reshape(9))
-        r = r.type(torch.float32)
-        with torch.no_grad():
-            model.eval()
-            # prob = softmax(model.forward(r))
-            prob = (model.forward(r))
-            move_probs_dk.append((prob[0]).item())
-            move_probs_tie.append((prob[2]).item())
-            move_probs_win.append((prob[1]).item())
-            move_probs_loss.append((prob[3]).item())
-    move_probs_win = np.array([round(l.item(),ROUND) for l in softmax(tensor(move_probs_win))])
-    move_probs_loss = np.array([round(l.item(),ROUND) for l in softmax(tensor(move_probs_loss))])
-    move_probs_dk = np.array([round(l.item(),ROUND) for l in softmax(tensor(move_probs_dk))])
-    move_probs_tie = np.array([round(l.item(),ROUND) for l in softmax(tensor(move_probs_tie))])
+        r = r.reshape(9)
+        r = r.tolist()
+        prob = session.run(None, {input_name: [r]})[0][0]
+        print("prob")
+        print(prob)
+        move_probs_dk.append(prob[0])
+        move_probs_tie.append(prob[2])
+        move_probs_win.append(prob[1])
+        move_probs_loss.append(prob[3])
+    move_probs_win = np.array([round(l,ROUND) for l in softmax(move_probs_win)])
+    move_probs_loss = np.array([round(l,ROUND) for l in softmax(move_probs_loss)])
+    move_probs_dk = np.array([round(l,ROUND) for l in softmax(move_probs_dk)])
+    move_probs_tie = np.array([round(l,ROUND) for l in softmax(move_probs_tie)])
 
 
     # maxwin = self.resolveMaxWin(move_probs_loss,move_probs_win)
@@ -131,8 +102,9 @@ def computer_move(board,firstmove):
     maxwin, maxwin2 = max2(move_probs_win)
     minwin = np.argmin(move_probs_win)
     maxloss,maxloss2 = max2(move_probs_loss)
-    option1 =  currentsituation[0].item() +currentsituation[3].item() # 3 Corresponds to Loss
-    option2 =  currentsituation[2].item()+ currentsituation[1].item() # 1 Corresponds to Win
+    print(currentsituation)
+    option1 =  currentsituation[0] +currentsituation[3] # 3 Corresponds to Loss
+    option2 =  currentsituation[2]+ currentsituation[1] # 1 Corresponds to Win
     playedIndex = 0
     
     if firstmove:
@@ -144,8 +116,8 @@ def computer_move(board,firstmove):
 
     #
     print("DK --- TIE --- WIN --- LOSS --- SUM")
-    print(f" {(currentsituation[0].item()):.6f} --- {(currentsituation[2].item()):.6f} ---"
-            f" {currentsituation[1].item():.6f} --- {(currentsituation[3].item()):.6f} ---")
+    print(f" {(currentsituation[0]):.6f} --- {(currentsituation[2]):.6f} ---"
+            f" {currentsituation[1]:.6f} --- {(currentsituation[3]):.6f} ---")
     print("---------------------------------------------------")
 
     for r in range(len(move_probs_loss)):
