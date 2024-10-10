@@ -3,3 +3,4 @@ Gunicorn
 fastapi
 onnx
 onnxruntime
+uvicorn
