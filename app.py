@@ -2,8 +2,18 @@ from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from tictactoefunctions import *
+from starlette.middleware.cors import CORSMiddleware
+
 
 app = FastAPI()
+
+app.add_middleware(
+CORSMiddleware,
+allow_origins=["*"], # Allows all origins
+allow_credentials=True,
+allow_methods=["*"], # Allows all methods
+allow_headers=["*"], # Allows all headers
+)
 
 @app.get('/getNextMove')
 def get_items(board: str, firstmove: str):
